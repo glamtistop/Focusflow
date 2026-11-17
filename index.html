@@ -109,6 +109,12 @@ li.done .check,.check.on{background:var(--accent);border-color:var(--accent)}
 .cal button.sel.has::after{background:#111}
 .when{color:var(--warm);font-size:.85rem;font-variant-numeric:tabular-nums;white-space:nowrap}
 
+.two{display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-top:.6rem}
+.two label,.lab{font-size:.82rem;color:var(--muted);display:block;min-width:0}
+.two input,.two select{min-width:0;max-width:100%;margin-top:.2rem}
+.sheet h1{margin-top:0}
+.wide{width:100%;margin-top:.6rem}
+
 /* habits */
 .dots{display:flex;gap:6px;margin-top:.7rem}
 .dots button{flex:1;min-height:40px;padding:0;border-radius:10px;font-size:.72rem;color:var(--muted);background:var(--surface2)}
@@ -204,25 +210,16 @@ table.keys{width:100%;border-collapse:collapse}table.keys td{padding:.3rem 0;bor
   <!-- PLAN -->
   <section id="view-plan" class="hidden">
     <h1>Plan, gently</h1>
-    <p class="muted small">Tap a day, add what matters. Send anything to your phone's calendar whenever you like.</p>
+    <p class="muted small">Tap a day to add what matters — as many items and days as you like.</p>
     <div class="card">
       <div class="calHead"><button id="calPrev" aria-label="Previous month">‹</button><strong id="calTitle"></strong><button id="calToday" class="small">Today</button><button id="calNext" aria-label="Next month">›</button></div>
       <div class="cal" id="calGrid"></div>
     </div>
     <h2 id="dayTitle"></h2>
     <ul class="list" id="dayList"></ul>
-    <form id="eventForm" class="card" autocomplete="off">
-      <label for="evTitle" class="small muted">Add something to this day</label>
-      <input id="evTitle" placeholder="e.g. Dentist, gym, call mom" maxlength="200" enterkeyhint="done">
-      <div class="row" style="margin-top:.5rem;flex-wrap:nowrap">
-        <input id="evTime" type="time" aria-label="Time (optional)" style="flex:1">
-        <select id="evMins" aria-label="How long" style="flex:1"><option value="15">15 min</option><option value="30" selected>30 min</option><option value="60">1 hour</option><option value="120">2 hours</option></select>
-        <button class="primary" type="submit">Add</button>
-      </div>
-      <p class="small muted" style="margin:.5rem 0 0">Leave the time empty for an all-day item.</p>
-    </form>
-    <button id="icsAll">📅 Send my whole plan to my calendar</button>
-    <p class="muted small">This saves a calendar file that Apple Calendar, Google Calendar and Outlook can open. It only leaves FocusFlow when you choose to.</p>
+    <button class="primary" id="addEvBtn" style="width:100%">＋ Add to this day</button>
+    <button id="icsAll" style="width:100%;margin-top:.6rem">📅 Add my whole plan to my phone's calendar</button>
+    <p class="muted small">Your phone shows you the items and asks before adding them. Your plan goes straight from FocusFlow to your own calendar — nowhere else.</p>
   </section>
 
   <!-- HABITS + GOALS -->
@@ -567,23 +564,96 @@ function renderPlan() {
   $("#calGrid").innerHTML = h;
   const sd = fromYmd(plan.sel);
   $("#dayTitle").textContent = (plan.sel === t ? "Today · " : "") + sd.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
-  const list = state.events.filter(e => e.date === plan.sel).sort((a, b) => (a.time || "").localeCompare(b.time || ""));
-  $("#dayList").innerHTML = list.length ? list.map(e => `<li data-id="${e.id}" class="${e.done ? "done" : ""}"><button class="check" aria-label="Mark done"></button><span class="when">${e.time ? fmtTime(e.time) : "All day"}</span><span class="t">${esc(e.title)}</span><button class="ghost small ics" aria-label="Add to my calendar">📅</button><button class="ghost small rm" aria-label="Remove">✕</button></li>`).join("")
+  $("#dayList").innerHTML = dayItems(plan.sel);
+}
+const hasRemind = e => e.remind !== "" && e.remind != null;
+function dayItems(day) {
+  const list = state.events.filter(e => e.date === day).sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+  return list.length ? list.map(e => `<li data-id="${e.id}" class="${e.done ? "done" : ""}"><button class="check" aria-label="Mark done"></button><span class="when">${e.time ? fmtTime(e.time) : "All day"}${hasRemind(e) ? " ⏰" : ""}</span><span class="t">${esc(e.title)}</span><button class="ghost small ics" aria-label="Add to my phone's calendar">📅</button><button class="ghost small rm" aria-label="Remove">✕</button></li>`).join("")
     : `<li class="empty">Nothing planned. An open day is allowed.</li>`;
 }
+/* the pop-up that opens when a date is tapped */
+function openDay(keep) {
+  const d = fromYmd(plan.sel);
+  openSheet(`<h1>${d.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}</h1>
+    <ul class="list" id="sheetDay">${dayItems(plan.sel)}</ul>
+    <form id="evForm" autocomplete="off">
+      <label class="lab" for="evTitle">What's happening?</label>
+      <input id="evTitle" placeholder="e.g. Dentist, gym, call mom" maxlength="200" enterkeyhint="done">
+      <div class="two"><label>Date<input id="evDate" type="date" value="${plan.sel}"></label><label>Time (optional)<input id="evTime" type="time"></label></div>
+      <div class="two"><label>How long<select id="evMins"><option value="15">15 minutes</option><option value="30" selected>30 minutes</option><option value="60">1 hour</option><option value="120">2 hours</option></select></label>
+        <label>Remind me<select id="evRemind"><option value="">No reminder</option><option value="0">When it starts</option><option value="10">10 minutes before</option><option value="30">30 minutes before</option><option value="60">1 hour before</option><option value="1440">The day before</option></select></label></div>
+      <div class="two"><label>Repeat<select id="evRepeat"><option value="1">Just this once</option><option value="d7">Every day for a week</option><option value="w4">Every week for 4 weeks</option></select></label><span></span></div>
+      <div class="row" style="margin-top:.9rem"><button class="primary" type="submit">Save</button><button type="button" id="evMore">Save &amp; add another</button></div>
+    </form>
+    <button class="wide" id="sheetIcs">📅 Add this day to my phone's calendar</button>
+    <button class="ghost wide" onclick="closeSheet()">Close</button>
+    <p class="muted small">⏰ Reminders pop up while FocusFlow is open. To be reminded any time — even with the app closed — add the item to your phone's calendar and the alert goes with it.</p>`);
+  $("#sheetDay").onclick = dayClick;
+  $("#evForm").onsubmit = e => { e.preventDefault(); saveFromSheet(false); };
+  $("#evMore").onclick = () => saveFromSheet(true);
+  $("#sheetIcs").onclick = () => toCalendar(state.events.filter(e => e.date === plan.sel));
+  if (keep) { $("#evDate").value = keep.date; $("#evTime").value = keep.time; $("#evRemind").value = keep.remind; $("#evTitle").focus(); }
+}
+async function saveFromSheet(another) {
+  const title = $("#evTitle").value.trim(); if (!title) return $("#evTitle").focus();
+  const date = $("#evDate").value || plan.sel, time = $("#evTime").value, remind = $("#evRemind").value, rep = $("#evRepeat").value;
+  const n = rep === "d7" ? 7 : rep === "w4" ? 4 : 1, step = rep === "w4" ? 7 : 1;
+  if (remind !== "" && "Notification" in window && Notification.permission === "default") { try { Notification.requestPermission(); } catch (e) {} }
+  for (let i = 0; i < n; i++) { const d = fromYmd(date); d.setDate(d.getDate() + i * step); await addEvent(title, ymd(d), time, $("#evMins").value, remind, true); }
+  plan.sel = date; plan.month = new Date(fromYmd(date).getFullYear(), fromYmd(date).getMonth(), 1); renderPlan();
+  toast(`${buddy().e} ${n > 1 ? n + " items are" : "It's"} on the plan. Future you says thanks.`);
+  if (another) openDay({ date, time: "", remind }); else closeSheet();
+}
 const fmtTime = hm => new Date(`2000-01-01T${hm}`).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-async function addEvent(title, date, time, mins) {
+async function addEvent(title, date, time, mins, remind = "", quiet = false) {
   title = title.trim(); if (!title) return;
-  const e = { id: uid(), title, date, time: time || "", mins: +mins || 30, done: false, created: Date.now() };
-  state.events.push(e); await DB.put("events", e); noteActivity(); renderPlan();
-  toast(`${buddy().e} On the plan. Future you says thanks.`);
+  const e = { id: uid(), title, date, time: time || "", mins: +mins || 30, remind, done: false, created: Date.now() };
+  state.events.push(e); await DB.put("events", e); noteActivity();
+  if (!quiet) { renderPlan(); toast(`${buddy().e} On the plan. Future you says thanks.`); }
 }
 async function dayClick(ev) {
   const li = ev.target.closest("li[data-id]"); if (!li) return; const e = state.events.find(x => x.id === li.dataset.id);
   if (ev.target.closest(".check")) { e.done = !e.done; e.doneAt = e.done ? Date.now() : null; await DB.put("events", e); if (e.done) toast(cheer()); }
   else if (ev.target.closest(".rm")) { state.events = state.events.filter(x => x !== e); await DB.del("events", e.id); }
-  else if (ev.target.closest(".ics")) return deliver(`${e.title.replace(/[^\w ]+/g, "").trim().slice(0, 30) || "plan"}.ics`, icsFor([e]), "text/calendar");
-  renderPlan();
+  else if (ev.target.closest(".ics")) return toCalendar([e]);
+  renderPlan(); const sd = $("#sheetDay"); if (sd && !$("#overlay").classList.contains("hidden")) sd.innerHTML = dayItems(plan.sel);
+}
+/* Hand items to the phone's own calendar. The app saves a calendar file on this device and opens it, so the phone shows its "add to calendar" screen. */
+async function calendarUrl(evts) {
+  if (!(navigator.serviceWorker && navigator.serviceWorker.controller && window.caches)) return null;
+  const url = new URL(`cal/focusflow-${Date.now()}.ics`, location.href).href, c = await caches.open("focusflow-cal");
+  for (const k of await c.keys()) await c.delete(k);
+  await c.put(url, new Response(icsFor(evts), { headers: { "Content-Type": "text/calendar; charset=utf-8" } }));
+  return url;
+}
+async function toCalendar(evts) {
+  if (!evts.length) return toast("Nothing to add yet.");
+  let url = null; try { url = await calendarUrl(evts); } catch (e) {}
+  if (url) { toast("Opening your calendar…"); location.href = url; }
+  else deliver(evts.length === 1 ? "focusflow-item.ics" : "focusflow-plan.ics", icsFor(evts), "text/calendar");
+}
+/* reminders */
+function remindAt(e) {
+  if (!hasRemind(e)) return null; const m = +e.remind;
+  if (e.time) return +new Date(`${e.date}T${e.time}:00`) - m * 6e4;
+  const d = new Date(`${e.date}T09:00:00`); if (m === 1440) d.setDate(d.getDate() - 1); return +d;
+}
+async function checkReminders() {
+  const now = Date.now(), due = [];
+  for (const e of state.events) {
+    const at = remindAt(e); if (at == null || e.notified || e.done || now < at) continue;
+    e.notified = true; await DB.put("events", e);
+    if (now - at < 12 * 36e5) due.push(e);
+  }
+  if (!due.length) return;
+  const line = e => `${e.title} — ${e.time ? fmtTime(e.time) : "today"}`;
+  if ("Notification" in window && Notification.permission === "granted") {
+    try { const reg = await navigator.serviceWorker.ready; for (const e of due) reg.showNotification("FocusFlow reminder", { body: line(e), icon: "icon-192.png", tag: e.id }); } catch (err) {}
+  }
+  chime();
+  if ($("#panic").classList.contains("hidden")) openSheet(`<div class="privacyHero">⏰</div><h1 style="text-align:center">A gentle reminder</h1>${due.map(e => `<p class="card">${esc(line(e))}</p>`).join("")}<p class="muted small">${buddy().e} ${esc(bName())}: You planned this for a reason. One small step is enough.</p><div class="row"><button class="primary" onclick="closeSheet()">Got it</button><button id="remFocus">Focus on it now</button></div>`);
+  const f = $("#remFocus"); if (f) f.onclick = () => { closeSheet(); focusText(due[0].title); };
 }
 const icsEsc = s => s.replace(/\\/g, "\\\\").replace(/[,;]/g, "\\$&").replace(/\n/g, "\\n");
 const icsLocal = d => `${ymd(d).replace(/-/g, "")}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
@@ -594,6 +664,7 @@ function icsFor(evts) {
     L.push("BEGIN:VEVENT", `UID:${e.id}@focusflow`, `DTSTAMP:${stamp}`, `SUMMARY:${icsEsc(e.title)}`);
     if (e.time) { const st = new Date(`${e.date}T${e.time}:00`), en = new Date(+st + (e.mins || 30) * 6e4); L.push(`DTSTART:${icsLocal(st)}`, `DTEND:${icsLocal(en)}`); }
     else { const n = fromYmd(e.date); n.setDate(n.getDate() + 1); L.push(`DTSTART;VALUE=DATE:${e.date.replace(/-/g, "")}`, `DTEND;VALUE=DATE:${ymd(n).replace(/-/g, "")}`); }
+    if (hasRemind(e)) { const m = +e.remind, trig = e.time ? (m === 1440 ? "-P1D" : `-PT${m}M`) : (m === 1440 ? "-PT15H" : "PT9H"); L.push("BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${icsEsc(e.title)}`, `TRIGGER:${trig}`, "END:VALARM"); }
     L.push("END:VEVENT");
   }
   L.push("END:VCALENDAR"); return L.join("\r\n");
@@ -842,7 +913,7 @@ function showOnboarding(i = 0) {
   $("#obSkip").onclick = done; $("#obNext").onclick = () => { if (i < 2) return showOnboarding(i + 1); done(); pickBuddy(); };
 }
 const keysHTML = `<h1>Keyboard shortcuts</h1><table class="keys">
-${[["n", "Capture a thought"], ["1–7", "Today · Focus · Plan · Habits · Tiny steps · Week · Settings"], ["j / k", "Move down / up in Today"], ["x", "Finish selected item"], ["f", "Focus timer on selected item"], ["Delete", "Remove selected item"], ["space", "Start / pause timer"], ["r", "Reset timer"], ["m", "Sound on / off"], ["a", "Add to the selected day in Plan"], ["[ / ]", "Previous / next month"], ["t", "Jump to today in Plan"], ["h", "Add a habit"], ["g", "Add a goal"], ["b", "Break down a big thing"], ["c", "Choose your buddy"], [".", "Calm mode (panic button)"], ["e", "Export Markdown"], ["d", "Toggle dark / light"], ["?", "This list"], ["Esc", "Close / leave calm mode"]].map(([k, v]) => `<tr><td><kbd>${k}</kbd></td><td>${v}</td></tr>`).join("")}
+${[["n", "Capture a thought"], ["1–7", "Today · Focus · Plan · Habits · Tiny steps · Week · Settings"], ["j / k", "Move down / up in Today"], ["x", "Finish selected item"], ["f", "Focus timer on selected item"], ["Delete", "Remove selected item"], ["space", "Start / pause timer"], ["r", "Reset timer"], ["m", "Sound on / off"], ["a", "Add to the selected day in Plan (opens the pop-up)"], ["[ / ]", "Previous / next month"], ["t", "Jump to today in Plan"], ["h", "Add a habit"], ["g", "Add a goal"], ["b", "Break down a big thing"], ["c", "Choose your buddy"], [".", "Calm mode (panic button)"], ["e", "Export Markdown"], ["d", "Toggle dark / light"], ["?", "This list"], ["Esc", "Close / leave calm mode"]].map(([k, v]) => `<tr><td><kbd>${k}</kbd></td><td>${v}</td></tr>`).join("")}
 </table><div class="row" style="margin-top:1rem"><button class="primary" onclick="closeSheet()">Close</button></div>`;
 
 /* ---------- keyboard ---------- */
@@ -866,7 +937,7 @@ document.addEventListener("keydown", e => {
     " ": () => { if (state.view !== "timer") show("timer"); startPause(); },
     r: () => state.view === "timer" && resetTimer(),
     m: () => setSound(sound.live ? "off" : "rain"),
-    a: () => { show("plan"); $("#evTitle").focus(); },
+    a: () => { show("plan"); openDay(); $("#evTitle").focus(); },
     "[": () => { show("plan"); shiftMonth(-1); }, "]": () => { show("plan"); shiftMonth(1); },
     t: () => { show("plan"); goToday(); },
     h: () => { show("habits"); $("#habitInput").focus(); },
@@ -890,11 +961,11 @@ $("#startBtn").onclick = startPause; $("#resetBtn").onclick = () => resetTimer()
 $("#buddy").onclick = pickBuddy; $("#buddyMenu").onclick = pickBuddy; $("#buddySet").onclick = pickBuddy;
 $("#durChips").onclick = e => { const m = +e.target.dataset.min; if (!m) return; document.querySelectorAll("#durChips button").forEach(b => b.setAttribute("aria-pressed", b === e.target)); resetTimer(m); };
 $("#soundChips").onclick = e => { const b = e.target.closest("button"); b && setSound(b.dataset.sound); };
-$("#calGrid").onclick = e => { const b = e.target.closest("button[data-d]"); if (b) { plan.sel = b.dataset.d; renderPlan(); } };
+$("#calGrid").onclick = e => { const b = e.target.closest("button[data-d]"); if (b) { plan.sel = b.dataset.d; renderPlan(); openDay(); } };
 $("#calPrev").onclick = () => shiftMonth(-1); $("#calNext").onclick = () => shiftMonth(1); $("#calToday").onclick = goToday;
 $("#dayList").onclick = dayClick;
-$("#eventForm").onsubmit = e => { e.preventDefault(); addEvent($("#evTitle").value, plan.sel, $("#evTime").value, $("#evMins").value); $("#evTitle").value = ""; $("#evTime").value = ""; };
-$("#icsAll").onclick = () => state.events.length ? deliver("focusflow-plan.ics", icsFor(state.events), "text/calendar") : toast("Nothing on your plan yet.");
+$("#addEvBtn").onclick = () => openDay();
+$("#icsAll").onclick = () => toCalendar(state.events);
 $("#habitForm").onsubmit = e => { e.preventDefault(); addHabit($("#habitInput").value); $("#habitInput").value = ""; };
 $("#goalForm").onsubmit = async e => { e.preventDefault(); const title = $("#goalInput").value.trim(); if (!title) return; const g = { id: uid(), title, due: $("#goalDue").value || "", done: false, created: Date.now() }; state.goals.push(g); await DB.put("goals", g); $("#goalInput").value = ""; $("#goalDue").value = ""; renderHabits(); toast(`${buddy().e} ${bName()}: Love it. We'll get there one step at a time.`); };
 $("#view-habits").onclick = habitsClick;
@@ -916,12 +987,13 @@ $("#wipeBtn").onclick = () => {
   openSheet(`<h1>Erase everything?</h1><p>This removes all your notes from this device. Since nothing is stored anywhere else, it can't be undone. Maybe export first?</p><div class="row"><button onclick="exportData('md')">Export first</button><button class="primary" id="wipeYes">Erase</button><button class="ghost" onclick="closeSheet()">Cancel</button></div>`);
   $("#wipeYes").onclick = async () => { await DB.clear(); location.reload(); };
 };
-document.addEventListener("visibilitychange", () => { if (!document.hidden) { if (timer.running) tick(); if (state.view === "inbox") renderBuddyCard(); checkNudge(); } });
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { if (timer.running) tick(); if (state.view === "inbox") renderBuddyCard(); checkNudge(); checkReminders(); } });
 
 (async () => {
   await load(); applyTheme(); renderInbox(); drawTimer(); installHint();
   if (!state.settings.onboarded) showOnboarding(0);
   checkNudge(); setInterval(checkNudge, 10 * 60 * 1000);
+  checkReminders(); setInterval(checkReminders, 30 * 1000);
   if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(() => {});
 })();
 </script>
