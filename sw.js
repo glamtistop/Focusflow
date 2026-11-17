@@ -1,6 +1,10 @@
-// Caches the app so it works fully offline. Your notes never pass through here.
-const CACHE = "focusflow-v1";
-const FILES = ["./", "index.html", "manifest.webmanifest", "icon.svg"];
+// Keeps a copy of the app on the device so it opens with no internet. Your notes never pass through here.
+const CACHE = "focusflow-v2";
+const FILES = ["./", "index.html", "manifest.webmanifest", "icon.svg", "icon-180.png", "icon-192.png", "icon-512.png"];
 self.addEventListener("install", e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting())));
 self.addEventListener("activate", e => e.waitUntil(caches.keys().then(k => Promise.all(k.filter(x => x !== CACHE).map(x => caches.delete(x)))).then(() => self.clients.claim())));
-self.addEventListener("fetch", e => { if (e.request.method !== "GET") return; e.respondWith(caches.match(e.request).then(r => r || fetch(e.request))); });
+// Newest version when online, saved copy when offline.
+self.addEventListener("fetch", e => {
+  if (e.request.method !== "GET" || new URL(e.request.url).origin !== location.origin) return;
+  e.respondWith(fetch(e.request).then(r => { if (r.ok) { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); } return r; }).catch(() => caches.match(e.request, { ignoreSearch: true }).then(r => r || caches.match("index.html"))));
+});
